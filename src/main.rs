@@ -1,19 +1,24 @@
-use axum::{Json, Router, routing::get};
-use serde_json::json;
+mod database;
+mod routes;
+
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() {
-    let app = Router::new().route("/health", get(health_check));
+async fn main() -> mongodb::error::Result<()> {
+    // 1️⃣ Connect MongoDB (HARD GATE)
+    let mongo_client = database::connect().await?;
 
-    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    // 2️⃣ Build router
+    let app = routes::create_router(mongo_client);
 
-    println!("Listening on http://127.0.0.1:3000");
+    // 3️⃣ Bind TCP listener
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let listener = TcpListener::bind(addr).await.unwrap();
+    println!("🚀 Server running on http://{}", addr);
 
+    // 4️⃣ Start server
     axum::serve(listener, app).await.unwrap();
-}
 
-// Handler
-async fn health_check() -> Json<serde_json::Value> {
-    Json(json!({"Status": "OK"}))
+    Ok(())
 }
