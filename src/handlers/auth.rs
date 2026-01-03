@@ -1,12 +1,10 @@
 use axum::{Extension, Json};
-use bcrypt::{DEFAULT_COST, hash};
-use mongodb::{
-    Client,
-    bson::{doc, oid::ObjectId},
-};
+use bcrypt::{DEFAULT_COST, hash, verify};
+#[allow(unused_imports)]
+use mongodb::{Client, bson::doc};
 use uuid::Uuid;
 
-use crate::models::user::{RegisterRequest, RegisterResponse};
+use crate::models::user::{LoginRequest, LoginResponse, RegisterRequest, RegisterResponse};
 
 pub async fn register(
     Extension(client): Extension<Client>,
@@ -54,6 +52,68 @@ pub async fn register(
     // 4️⃣ Response
     Ok(Json(RegisterResponse {
         id: user_id,
+        email: payload.email,
+    }))
+}
+
+pub async fn login(
+    Extension(client): Extension<Client>,
+    Json(payload): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, (axum::http::StatusCode, String)> {
+    // find the user by email
+    let db = client.database("rustauthx");
+    let users = db.collection::<mongodb::bson::Document>("users");
+
+    let user = users
+        .find_one(doc! {"email": &payload.email}, None)
+        .await
+        .map_err(|_| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "DB find failed".into(),
+            )
+        })?;
+
+    let user = match user {
+        Some(u) => u,
+        None => {
+            return Err((
+                axum::http::StatusCode::UNAUTHORIZED,
+                "Invalid email or password".into(),
+            ));
+        }
+    };
+
+    let hashed_password = user.get_str("password").map_err(|_| {
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Corrupt user data".into(),
+        )
+    })?;
+
+    let is_valid = verify(&payload.password, hashed_password).map_err(|_| {
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Hash error".into(),
+        )
+    })?;
+
+    if !is_valid {
+        return Err((
+            axum::http::StatusCode::UNAUTHORIZED,
+            "Invalid email or password".into(),
+        ));
+    }
+
+    let user_id = user.get_str("_id").map_err(|_| {
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Missing user id".into(),
+        )
+    })?;
+
+    Ok(Json(LoginResponse {
+        user_id: user_id.to_string(),
         email: payload.email,
     }))
 }

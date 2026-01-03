@@ -11,3 +11,4 @@ mongodb = { version = "2.6.0", default-features = false, features = ["tokio-runt
 serde = { version = "1.0", features = ["derive"] }
 bcrypt = "0.15"
 uuid = { version = "1", features = ["v4"] }
+jsonwebtoken = "9"

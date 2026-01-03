@@ -5,12 +5,13 @@ use axum::{
 use mongodb::Client;
 use serde_json::json;
 
-use crate::handlers::auth::register;
+use crate::handlers::auth::{login, register};
 
 pub fn create_router(mongo_client: Client) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/register", post(register))
+        .route("/login", post(login))
         .layer(Extension(mongo_client))
 }
 
