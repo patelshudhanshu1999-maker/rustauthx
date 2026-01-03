@@ -1,9 +1,12 @@
 use axum::{Extension, Json};
 use bcrypt::{DEFAULT_COST, hash, verify};
-#[allow(unused_imports)]
+use jsonwebtoken::{Header, encode};
 use mongodb::{Client, bson::doc};
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+use crate::auth::jwt::{JWT_EXP_HOURS, encoding_key};
+use crate::models::claims::Claims;
 use crate::models::user::{LoginRequest, LoginResponse, RegisterRequest, RegisterResponse};
 
 pub async fn register(
@@ -105,6 +108,7 @@ pub async fn login(
         ));
     }
 
+    // Extract user_id BEFORE using it
     let user_id = user.get_str("_id").map_err(|_| {
         (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -112,8 +116,22 @@ pub async fn login(
         )
     })?;
 
-    Ok(Json(LoginResponse {
-        user_id: user_id.to_string(),
-        email: payload.email,
-    }))
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let claims = Claims {
+        sub: user_id.to_string(),
+        exp: (now + JWT_EXP_HOURS as u64 * 3600) as usize,
+    };
+
+    let token = encode(&Header::default(), &claims, &encoding_key()).map_err(|_| {
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Token creation failed".into(),
+        )
+    })?;
+
+    Ok(Json(LoginResponse { token }))
 }
