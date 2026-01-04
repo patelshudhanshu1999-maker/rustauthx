@@ -13,7 +13,7 @@ pub fn decoding_key() -> DecodingKey {
     DecodingKey::from_secret(JWT_SECRET)
 }
 
-pub fn generate_token(user_id: &str) -> String {
+pub fn generate_token(user_id: &str, role: &str) -> String {
     let expiration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -22,6 +22,7 @@ pub fn generate_token(user_id: &str) -> String {
 
     let claims = Claims {
         sub: user_id.to_string(),
+        role: role.to_string(),
         exp: expiration as usize,
     };
 

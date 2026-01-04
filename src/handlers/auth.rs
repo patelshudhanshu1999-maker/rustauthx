@@ -28,6 +28,22 @@ pub async fn register(
         )
     })?;
 
+    // Validate and convert role: 0 = admin, 1 = user
+    let role = match payload.role {
+        Some(0) => "admin",
+        Some(1) => "user",
+        None => "user", // Default to user if not provided
+        Some(invalid) => {
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                format!(
+                    "Invalid role value: {}. Use 0 for admin or 1 for user.",
+                    invalid
+                ),
+            ));
+        }
+    };
+
     // 3️⃣ Insert into Mongo
     let db = client.database("rustauthx");
     let users = db.collection("users");
@@ -40,6 +56,7 @@ pub async fn register(
                 "_id": &user_id,
                 "email": &payload.email,
                 "password": hashed_password,
+                "role": role,  // Use validated role
             },
             None,
         )
@@ -132,6 +149,9 @@ pub async fn login(
     //     exp: (now + JWT_EXP_HOURS as u64 * 3600) as usize,
     // };
 
+    // Extract role from database
+    let role = user.get_str("role").unwrap_or("user"); // Default to "user" if not found
+
     // let token = encode(&Header::default(), &claims, &encoding_key()).map_err(|_| {
     //     (
     //         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -139,7 +159,7 @@ pub async fn login(
     //     )
     // })?;
 
-    let token = generate_token(user_id);
+    let token = generate_token(user_id, role);
 
     let refresh_token = Uuid::new_v4().to_string();
 
@@ -213,9 +233,22 @@ pub async fn refresh(
         }
     }
 
+    // Get user role from database
+    let users_collection = db.collection::<mongodb::bson::Document>("users");
+    let user_doc = users_collection
+        .find_one(doc! {"_id": user_id}, None)
+        .await
+        .unwrap();
+
+    let role = user_doc
+        .as_ref()
+        .and_then(|doc| doc.get_str("role").ok())
+        .unwrap_or("user")
+        .to_string(); // Convert to owned String
+
     // Generate new access token
-    let new_access_token = generate_token(user_id);
-    println!("✅ New token generated");
+    let new_access_token = generate_token(user_id, &role);
+    println!("✅ New token generated with role: {}", role);
 
     // Update the refresh token document with the NEW access token
     tokens
