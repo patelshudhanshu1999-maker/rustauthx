@@ -6,12 +6,12 @@ use uuid::Uuid;
 
 use crate::auth::jwt::generate_token;
 use crate::models::token::RefreshRequest;
-use crate::models::user::{LoginRequest, LoginResponse, RegisterRequest, RegisterResponse};
+use crate::models::user::{LoginRequest, LoginResponse, RegisterRequest};
 
 pub async fn register(
     Extension(client): Extension<Client>,
     Json(payload): Json<RegisterRequest>,
-) -> Result<Json<RegisterResponse>, (axum::http::StatusCode, String)> {
+) -> Result<Json<LoginResponse>, (axum::http::StatusCode, String)> {
     // 1️⃣ Basic validation
     if payload.email.is_empty() || payload.password.len() < 6 {
         return Err((
@@ -68,10 +68,33 @@ pub async fn register(
             )
         })?;
 
-    // 4️⃣ Response
-    Ok(Json(RegisterResponse {
-        id: user_id,
-        email: payload.email,
+    // 4️⃣ Generate tokens (auto-login after registration)
+    let token = generate_token(&user_id, role);
+    let refresh_token = Uuid::new_v4().to_string();
+
+    // Store refresh token in database
+    let tokens = db.collection("refresh_tokens");
+    tokens
+        .insert_one(
+            doc! {
+                "user_id": &user_id,
+                "token": &refresh_token,
+                "access_token": &token,  // Store the access token
+            },
+            None,
+        )
+        .await
+        .map_err(|_| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to store refresh token".into(),
+            )
+        })?;
+
+    // 5️⃣ Return tokens (user is now authenticated)
+    Ok(Json(LoginResponse {
+        token,
+        refresh_token,
     }))
 }
 

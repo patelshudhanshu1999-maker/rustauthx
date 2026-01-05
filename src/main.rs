@@ -21,8 +21,13 @@ async fn main() -> mongodb::error::Result<()> {
     let listener = TcpListener::bind(addr).await.unwrap();
     println!("🚀 Server running on http://{}", addr);
 
-    // 4️⃣ Start server
-    axum::serve(listener, app).await.unwrap();
+    // 4️⃣ Start server with ConnectInfo for rate limiting
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 
     Ok(())
 }
